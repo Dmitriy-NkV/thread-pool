@@ -69,4 +69,16 @@ void ThreadPool< Function, Args... >::run()
   }
 }
 
+template < class Function, class... Args >
+auto ThreadPool< Function, Args... >::submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >
+{
+  auto task = std::packaged_task< std::invoke_result_t< Function, Args... > > task(std::bind(function, args));
+  auto res = task->get_future();
+  {
+    std::unique_lock< std::mutex > lock(tasksMutex_);
+    tasks_.emplace(task);
+  }
+  return res;
+}
+
 #endif
