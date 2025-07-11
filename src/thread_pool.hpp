@@ -10,6 +10,7 @@
 #include <queue>
 #include <functional>
 #include <memory>
+#include <iostream>
 
 class ThreadPool
 {
@@ -28,6 +29,7 @@ private:
   std::vector< std::thread > threads_;
   std::atomic< bool > stop_;
   std::mutex tasksMutex_;
+  std::atomic< size_t > threadsInWork_;
   std::condition_variable tasksCV_;
 
   void run();
@@ -39,6 +41,7 @@ ThreadPool::ThreadPool(size_t threadNum):
   threads_(),
   stop_(false),
   tasksMutex_(),
+  threadsInWork_(0),
   tasksCV_()
 {
   threads_.reserve(threadNum_);
@@ -63,10 +66,12 @@ void ThreadPool::run()
       else
       {
         task = std::move(tasks_.front());
+        ++threadsInWork_;
         tasks_.pop();
       }
     }
     task();
+    --threadsInWork_;
   }
 }
 
@@ -94,22 +99,24 @@ auto ThreadPool::submit(Function&& function, Args&&... args) -> std::future< std
 
 void ThreadPool::shutdown()
 {
-  stop_ = true;
+  {
+    std::unique_lock< std::mutex > lock(tasksMutex_);
+    stop_ = true;
+  }
   tasksCV_.notify_all();
   for (auto i = threads_.begin(); i != threads_.end(); ++i)
   {
-    tasksCV_.notify_all();
-    i->join();
+    if (i->joinable())
+    {
+      i->join();
+    }
   }
 }
 
 void ThreadPool::wait()
 {
-  for (auto i = threads_.begin(); i != threads_.end(); ++i)
-  {
-    tasksCV_.notify_all();
-    i->join();
-  }
+  tasksCV_.notify_all();
+  while (threadsInWork_ || !tasks_.empty());
 }
 
 #endif
