@@ -8,14 +8,16 @@
 #include <future>
 #include <vector>
 #include <queue>
+#include <functional>
+#include <memory>
 
-template < class Function, class... Args >
 class ThreadPool
 {
 public:
   ThreadPool(size_t threadNum);
   ~ThreadPool();
 
+  template < class Function, class... Args >
   auto submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >;
   void shutdown();
   void wait();
@@ -23,39 +25,37 @@ private:
   size_t threadNum_;
   std::queue< std::function< void() > > tasks_;
   std::vector< std::thread > threads_;
-  std::atomic< bool > isWork_;
+  std::atomic< bool > stop_;
   std::mutex tasksMutex_;
   std::condition_variable tasksCV_;
 
   void run();
 };
 
-template < class Function, class... Args >
-ThreadPool< Function, Args... >::ThreadPool(size_t threadNum):
-  threadNum_(std::thread::hardware_concurrency() ? std::min(std::thread::hardware_concurrency(), threadNum) : threadNum),
+ThreadPool::ThreadPool(size_t threadNum):
+  threadNum_(std::thread::hardware_concurrency() ? std::min(static_cast< size_t >(std::thread::hardware_concurrency()), threadNum) : threadNum),
   tasks_(),
   threads_(),
-  isWork_(true),
+  stop_(false),
   tasksMutex_(),
   tasksCV_()
 {
-  threads.reserve(threadNum_);
+  threads_.reserve(threadNum_);
   for (size_t i = 0; i != threadNum_; ++i)
   {
-    threads_.emplace_back(ThreadPool::run);
+    threads_.emplace_back(&ThreadPool::run, this);
   }
 }
 
-template < class Function, class... Args >
-void ThreadPool< Function, Args... >::run()
+void ThreadPool::run()
 {
-  while (isWork_)
+  while (!stop_)
   {
     std::function< void() > task;
     {
       std::unique_lock< std::mutex > lock(tasksMutex_);
-      tasksCV_.wait(lock, [this]() -> bool { return !isWork_ || !tasks_.empty(); });
-      if (stop && tasks.empty())
+      tasksCV_.wait(lock, [this]() -> bool { return stop_ || !tasks_.empty(); });
+      if (stop_ && tasks_.empty())
       {
         return;
       }
@@ -70,13 +70,13 @@ void ThreadPool< Function, Args... >::run()
 }
 
 template < class Function, class... Args >
-auto ThreadPool< Function, Args... >::submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >
+auto ThreadPool::submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >
 {
-  auto task = std::packaged_task< std::invoke_result_t< Function, Args... > > task(std::bind(function, args));
+  auto task = std::make_shared< std::packaged_task< std::invoke_result_t< Function, Args... >() > >(std::bind(std::forward< Function >(function), std::forward< Args >(args)...));
   auto res = task->get_future();
   {
     std::unique_lock< std::mutex > lock(tasksMutex_);
-    tasks_.emplace(task);
+    tasks_.emplace([task]() { (*task)(); });
   }
   return res;
 }
