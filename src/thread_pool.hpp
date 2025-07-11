@@ -21,6 +21,7 @@ public:
   auto submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >;
   void shutdown();
   void wait();
+
 private:
   size_t threadNum_;
   std::queue< std::function< void() > > tasks_;
@@ -69,6 +70,11 @@ void ThreadPool::run()
   }
 }
 
+ThreadPool::~ThreadPool()
+{
+  shutdown();
+}
+
 template < class Function, class... Args >
 auto ThreadPool::submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >
 {
@@ -76,9 +82,34 @@ auto ThreadPool::submit(Function&& function, Args&&... args) -> std::future< std
   auto res = task->get_future();
   {
     std::unique_lock< std::mutex > lock(tasksMutex_);
+    if (stop_)
+    {
+      throw std::runtime_error("Error: ThreadPool is stoped");
+    }
     tasks_.emplace([task]() { (*task)(); });
   }
+  tasksCV_.notify_one();
   return res;
+}
+
+void ThreadPool::shutdown()
+{
+  stop_ = true;
+  tasksCV_.notify_all();
+  for (auto i = threads_.begin(); i != threads_.end(); ++i)
+  {
+    tasksCV_.notify_all();
+    i->join();
+  }
+}
+
+void ThreadPool::wait()
+{
+  for (auto i = threads_.begin(); i != threads_.end(); ++i)
+  {
+    tasksCV_.notify_all();
+    i->join();
+  }
 }
 
 #endif
