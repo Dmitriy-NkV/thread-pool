@@ -1,6 +1,6 @@
 #include "thread_pool.hpp"
 
-ThreadPool::ThreadPool(size_t threadNum):
+threadpool::ThreadPool::ThreadPool(size_t threadNum):
   threadNum_(std::thread::hardware_concurrency() ? std::min(static_cast< size_t >(std::thread::hardware_concurrency()), threadNum) : threadNum),
   tasks_(),
   threads_(),
@@ -17,7 +17,7 @@ ThreadPool::ThreadPool(size_t threadNum):
   }
 }
 
-void ThreadPool::run()
+void threadpool::ThreadPool::run()
 {
   while (!stop_)
   {
@@ -45,29 +45,12 @@ void ThreadPool::run()
   }
 }
 
-ThreadPool::~ThreadPool()
+threadpool::ThreadPool::~ThreadPool()
 {
   shutdown();
 }
 
-template < class Function, class... Args >
-auto ThreadPool::submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >
-{
-  auto task = std::make_shared< std::packaged_task< std::invoke_result_t< Function, Args... >() > >(std::bind(std::forward< Function >(function), std::forward< Args >(args)...));
-  auto res = task->get_future();
-  {
-    std::unique_lock< std::mutex > lock(tasksMutex_);
-    if (stop_)
-    {
-      throw std::runtime_error("Error: ThreadPool is stoped");
-    }
-    tasks_.emplace([task]() { (*task)(); });
-  }
-  tasksCV_.notify_one();
-  return res;
-}
-
-void ThreadPool::shutdown()
+void threadpool::ThreadPool::shutdown()
 {
   {
     std::unique_lock< std::mutex > lock(tasksMutex_);
@@ -83,7 +66,7 @@ void ThreadPool::shutdown()
   }
 }
 
-void ThreadPool::wait()
+void threadpool::ThreadPool::wait()
 {
   tasksCV_.notify_all();
   std::unique_lock< std::mutex > lock(tasksMutex_);
