@@ -10,7 +10,6 @@
 #include <queue>
 #include <functional>
 #include <memory>
-#include <iostream>
 
 class ThreadPool
 {
@@ -29,6 +28,7 @@ private:
   std::vector< std::thread > threads_;
   std::atomic< bool > stop_;
   std::mutex tasksMutex_;
+  std::condition_variable waitCV_;
   std::atomic< size_t > threadsInWork_;
   std::condition_variable tasksCV_;
 
@@ -41,6 +41,7 @@ ThreadPool::ThreadPool(size_t threadNum):
   threads_(),
   stop_(false),
   tasksMutex_(),
+  waitCV_(),
   threadsInWork_(0),
   tasksCV_()
 {
@@ -58,6 +59,10 @@ void ThreadPool::run()
     std::function< void() > task;
     {
       std::unique_lock< std::mutex > lock(tasksMutex_);
+      if (tasks_.empty() && !threadsInWork_)
+      {
+        waitCV_.notify_one();
+      }
       tasksCV_.wait(lock, [this]() -> bool { return stop_ || !tasks_.empty(); });
       if (stop_ && tasks_.empty())
       {
@@ -116,7 +121,8 @@ void ThreadPool::shutdown()
 void ThreadPool::wait()
 {
   tasksCV_.notify_all();
-  while (threadsInWork_ || !tasks_.empty());
+  std::unique_lock< std::mutex > lock(tasksMutex_);
+  waitCV_.wait(lock, [this]() -> bool { return tasks_.empty() && !threadsInWork_; });
 }
 
 #endif
