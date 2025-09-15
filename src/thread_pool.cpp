@@ -1,7 +1,7 @@
 #include "thread_pool.hpp"
 
 threadpool::ThreadPool::ThreadPool(size_t threadNum):
-  threadNum_(std::thread::hardware_concurrency() ? std::min(static_cast< size_t >(std::thread::hardware_concurrency()), threadNum) : threadNum),
+  threadNum_(std::max(threadNum, static_cast< size_t >(1))),
   tasks_(),
   threads_(),
   stop_(false),
