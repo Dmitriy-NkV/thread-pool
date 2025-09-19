@@ -26,7 +26,9 @@ void threadpool::ThreadPool::run()
       std::unique_lock< std::mutex > lock(tasks_mutex_);
       if (tasks_.empty() && !threads_in_work_)
       {
+        lock.unlock();
         wait_cv_.notify_one();
+        lock.lock();
       }
       tasks_cv_.wait(lock, [this]() -> bool { return stop_ || !tasks_.empty(); });
       if (stop_ && tasks_.empty())
