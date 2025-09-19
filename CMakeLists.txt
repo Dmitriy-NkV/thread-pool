@@ -5,13 +5,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(thread-pool
+add_executable(Thread-pool
   src/main.cpp
   src/thread_pool.cpp
   src/utils/logger.cpp
 )
 
-target_include_directories(thread-pool PRIVATE
+target_include_directories(Thread-pool PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
 )
