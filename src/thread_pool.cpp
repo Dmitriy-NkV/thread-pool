@@ -1,0 +1,87 @@
+#include "thread_pool.hpp"
+
+threadpool::ThreadPool::ThreadPool(size_t threadNum):
+  thread_num_(std::max(threadNum, static_cast< size_t >(1))),
+  tasks_(),
+  threads_(),
+  stop_(false),
+  stop_source_(),
+  tasks_mutex_(),
+  wait_cv_(),
+  threads_in_work_(0),
+  tasks_cv_()
+{
+  threads_.reserve(thread_num_);
+  for (size_t i = 0; i != thread_num_; ++i)
+  {
+    threads_.emplace_back(&ThreadPool::run, this, stop_source_.get_token());
+  }
+}
+
+void threadpool::ThreadPool::run(std::stop_token token)
+{
+  while (!stop_ && !token.stop_requested())
+  {
+    std::function< void() > task;
+    {
+      std::unique_lock< std::mutex > lock(tasks_mutex_);
+      if (tasks_.empty() && !threads_in_work_)
+      {
+        lock.unlock();
+        wait_cv_.notify_one();
+        lock.lock();
+      }
+      tasks_cv_.wait(lock, [this, token]() -> bool { return stop_ || token.stop_requested() || !tasks_.empty(); });
+      if (stop_ && tasks_.empty())
+      {
+        return;
+      }
+      else
+      {
+        task = std::move(tasks_.front());
+        ++threads_in_work_;
+        tasks_.pop();
+      }
+    }
+    try
+    {
+      task();
+    }
+    catch (const std::exception& e)
+    {
+      LOG(logger::LogLevel::ERROR, std::format("Error in thread: {}", e.what()));
+    }
+    --threads_in_work_;
+  }
+}
+
+threadpool::ThreadPool::~ThreadPool()
+{
+  if (!stop_)
+  {
+    shutdown();
+  }
+}
+
+void threadpool::ThreadPool::shutdown()
+{
+  stop_ = true;
+  stop_source_.request_stop();
+  tasks_cv_.notify_all();
+}
+
+void threadpool::ThreadPool::wait()
+{
+  std::unique_lock< std::mutex > lock(tasks_mutex_);
+
+  if (tasks_.empty() && !threads_in_work_)
+  {
+    return;
+  }
+
+  lock.unlock();
+  tasks_cv_.notify_all();
+  lock.lock();
+
+  wait_cv_.wait(lock, [this]() -> bool { return tasks_.empty() && !threads_in_work_; });
+}
