@@ -10,6 +10,7 @@
 #include <queue>
 #include <functional>
 #include <memory>
+#include "logger.hpp"
 
 namespace threadpool
 {
@@ -35,7 +36,7 @@ namespace threadpool
     std::atomic< size_t > threads_in_work_;
     std::condition_variable tasks_cv_;
 
-    void run();
+    void run(std::stop_token token);
   };
 
   template < class Function, class... Args >
@@ -46,7 +47,7 @@ namespace threadpool
       (std::bind(std::forward< Function >(function), std::forward< Args >(args)...));
     auto res = task->get_future();
     {
-      std::unique_lock< std::mutex > lock(tasksMutex_);
+      std::unique_lock< std::mutex > lock(tasks_mutex_);
       if (stop_)
       {
         throw std::runtime_error("Error: ThreadPool is stoped");

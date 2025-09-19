@@ -18,9 +18,9 @@ threadpool::ThreadPool::ThreadPool(size_t threadNum):
   }
 }
 
-void threadpool::ThreadPool::run()
+void threadpool::ThreadPool::run(std::stop_token token)
 {
-  while (!stop_ && !stop_source_.get_token().stop_requested())
+  while (!stop_ && !token.stop_requested())
   {
     std::function< void() > task;
     {
@@ -31,7 +31,7 @@ void threadpool::ThreadPool::run()
         wait_cv_.notify_one();
         lock.lock();
       }
-      tasks_cv_.wait(lock, [this]() -> bool { return stop_ || !tasks_.empty(); });
+      tasks_cv_.wait(lock, [this, token]() -> bool { return stop_ || token.stop_requested() || !tasks_.empty(); });
       if (stop_ && tasks_.empty())
       {
         return;
@@ -49,8 +49,7 @@ void threadpool::ThreadPool::run()
     }
     catch (const std::exception& e)
     {
-      --threads_in_work_;
-      continue;
+      LOG(logger::LogLevel::ERROR, std::format("Error in thread: {}", e.what()));
     }
     --threads_in_work_;
   }
@@ -80,6 +79,9 @@ void threadpool::ThreadPool::wait()
     return;
   }
 
+  lock.unlock();
   tasks_cv_.notify_all();
+  lock.lock();
+
   wait_cv_.wait(lock, [this]() -> bool { return tasks_.empty() && !threads_in_work_; });
 }
