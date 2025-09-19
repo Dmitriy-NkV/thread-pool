@@ -42,7 +42,15 @@ void threadpool::ThreadPool::run()
         tasks_.pop();
       }
     }
-    task();
+    try
+    {
+      task();
+    }
+    catch (const std::exception& e)
+    {
+      --threads_in_work_;
+      continue;
+    }
     --threads_in_work_;
   }
 }
