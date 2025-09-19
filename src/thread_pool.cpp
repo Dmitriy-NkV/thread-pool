@@ -1,17 +1,17 @@
 #include "thread_pool.hpp"
 
 threadpool::ThreadPool::ThreadPool(size_t threadNum):
-  threadNum_(std::max(threadNum, static_cast< size_t >(1))),
+  thread_num_(std::max(threadNum, static_cast< size_t >(1))),
   tasks_(),
   threads_(),
   stop_(false),
-  tasksMutex_(),
-  waitCV_(),
-  threadsInWork_(0),
-  tasksCV_()
+  tasks_mutex_(),
+  wait_cv_(),
+  threads_in_work_(0),
+  tasks_cv_()
 {
-  threads_.reserve(threadNum_);
-  for (size_t i = 0; i != threadNum_; ++i)
+  threads_.reserve(thread_num_);
+  for (size_t i = 0; i != thread_num_; ++i)
   {
     threads_.emplace_back(&ThreadPool::run, this);
   }
@@ -23,12 +23,12 @@ void threadpool::ThreadPool::run()
   {
     std::function< void() > task;
     {
-      std::unique_lock< std::mutex > lock(tasksMutex_);
-      if (tasks_.empty() && !threadsInWork_)
+      std::unique_lock< std::mutex > lock(tasks_mutex_);
+      if (tasks_.empty() && !threads_in_work_)
       {
-        waitCV_.notify_one();
+        wait_cv_.notify_one();
       }
-      tasksCV_.wait(lock, [this]() -> bool { return stop_ || !tasks_.empty(); });
+      tasks_cv_.wait(lock, [this]() -> bool { return stop_ || !tasks_.empty(); });
       if (stop_ && tasks_.empty())
       {
         return;
@@ -36,12 +36,12 @@ void threadpool::ThreadPool::run()
       else
       {
         task = std::move(tasks_.front());
-        ++threadsInWork_;
+        ++threads_in_work_;
         tasks_.pop();
       }
     }
     task();
-    --threadsInWork_;
+    --threads_in_work_;
   }
 }
 
@@ -53,10 +53,10 @@ threadpool::ThreadPool::~ThreadPool()
 void threadpool::ThreadPool::shutdown()
 {
   {
-    std::unique_lock< std::mutex > lock(tasksMutex_);
+    std::unique_lock< std::mutex > lock(tasks_mutex_);
     stop_ = true;
   }
-  tasksCV_.notify_all();
+  tasks_cv_.notify_all();
   for (auto i = threads_.begin(); i != threads_.end(); ++i)
   {
     if (i->joinable())
@@ -68,7 +68,7 @@ void threadpool::ThreadPool::shutdown()
 
 void threadpool::ThreadPool::wait()
 {
-  tasksCV_.notify_all();
-  std::unique_lock< std::mutex > lock(tasksMutex_);
-  waitCV_.wait(lock, [this]() -> bool { return tasks_.empty() && !threadsInWork_; });
+  tasks_cv_.notify_all();
+  std::unique_lock< std::mutex > lock(tasks_mutex_);
+  wait_cv_.wait(lock, [this]() -> bool { return tasks_.empty() && !threads_in_work_; });
 }

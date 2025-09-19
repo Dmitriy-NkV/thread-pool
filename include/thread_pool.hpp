@@ -25,14 +25,14 @@ namespace threadpool
     void wait();
 
   private:
-    size_t threadNum_;
+    size_t thread_num_;
     std::queue< std::function< void() > > tasks_;
     std::vector< std::thread > threads_;
     std::atomic< bool > stop_;
-    std::mutex tasksMutex_;
-    std::condition_variable waitCV_;
-    std::atomic< size_t > threadsInWork_;
-    std::condition_variable tasksCV_;
+    std::mutex tasks_mutex_;
+    std::condition_variable wait_cv_;
+    std::atomic< size_t > threads_in_work_;
+    std::condition_variable tasks_cv_;
 
     void run();
   };
@@ -50,7 +50,7 @@ namespace threadpool
       }
       tasks_.emplace([task]() { (*task)(); });
     }
-    tasksCV_.notify_one();
+    tasks_cv_.notify_one();
     return res;
   }
 }
