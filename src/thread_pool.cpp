@@ -47,7 +47,10 @@ void threadpool::ThreadPool::run()
 
 threadpool::ThreadPool::~ThreadPool()
 {
-  shutdown();
+  if (!stop_)
+  {
+    shutdown();
+  }
 }
 
 void threadpool::ThreadPool::shutdown()
