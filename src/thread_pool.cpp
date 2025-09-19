@@ -73,7 +73,13 @@ void threadpool::ThreadPool::shutdown()
 
 void threadpool::ThreadPool::wait()
 {
-  tasks_cv_.notify_all();
   std::unique_lock< std::mutex > lock(tasks_mutex_);
+
+  if (tasks_.empty() && !threads_in_work_)
+  {
+    return;
+  }
+
+  tasks_cv_.notify_all();
   wait_cv_.wait(lock, [this]() -> bool { return tasks_.empty() && !threads_in_work_; });
 }
