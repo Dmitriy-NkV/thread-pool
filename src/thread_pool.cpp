@@ -5,6 +5,7 @@ threadpool::ThreadPool::ThreadPool(size_t threadNum):
   tasks_(),
   threads_(),
   stop_(false),
+  stop_source_(),
   tasks_mutex_(),
   wait_cv_(),
   threads_in_work_(0),
@@ -13,13 +14,13 @@ threadpool::ThreadPool::ThreadPool(size_t threadNum):
   threads_.reserve(thread_num_);
   for (size_t i = 0; i != thread_num_; ++i)
   {
-    threads_.emplace_back(&ThreadPool::run, this);
+    threads_.emplace_back(&ThreadPool::run, this, stop_source_.get_token());
   }
 }
 
 void threadpool::ThreadPool::run()
 {
-  while (!stop_)
+  while (!stop_ && !stop_source_.get_token().stop_requested())
   {
     std::function< void() > task;
     {
@@ -65,18 +66,9 @@ threadpool::ThreadPool::~ThreadPool()
 
 void threadpool::ThreadPool::shutdown()
 {
-  {
-    std::unique_lock< std::mutex > lock(tasks_mutex_);
-    stop_ = true;
-  }
+  stop_ = true;
+  stop_source_.request_stop();
   tasks_cv_.notify_all();
-  for (auto i = threads_.begin(); i != threads_.end(); ++i)
-  {
-    if (i->joinable())
-    {
-      i->join();
-    }
-  }
 }
 
 void threadpool::ThreadPool::wait()

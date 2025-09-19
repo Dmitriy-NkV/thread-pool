@@ -27,8 +27,9 @@ namespace threadpool
   private:
     size_t thread_num_;
     std::queue< std::function< void() > > tasks_;
-    std::vector< std::thread > threads_;
+    std::vector< std::jthread > threads_;
     std::atomic< bool > stop_;
+    std::stop_source stop_source_;
     std::mutex tasks_mutex_;
     std::condition_variable wait_cv_;
     std::atomic< size_t > threads_in_work_;
@@ -38,9 +39,11 @@ namespace threadpool
   };
 
   template < class Function, class... Args >
-  auto threadpool::ThreadPool::submit(Function&& function, Args&&... args) -> std::future< std::invoke_result_t< Function, Args... > >
+  auto threadpool::ThreadPool::submit(Function&& function, Args&&... args)
+    -> std::future< std::invoke_result_t< Function, Args... > >
   {
-    auto task = std::make_shared< std::packaged_task< std::invoke_result_t< Function, Args... >() > >(std::bind(std::forward< Function >(function), std::forward< Args >(args)...));
+    auto task = std::make_shared< std::packaged_task< std::invoke_result_t< Function, Args... >() > >
+      (std::bind(std::forward< Function >(function), std::forward< Args >(args)...));
     auto res = task->get_future();
     {
       std::unique_lock< std::mutex > lock(tasksMutex_);
